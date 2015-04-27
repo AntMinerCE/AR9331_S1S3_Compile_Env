@@ -1,0 +1,6 @@
+﻿ svn co svn://svn.openwrt.org/openwrt/trunk@38031 openwrt
+ cd openwrt
+ ln -s ../dl
+ ./scripts/feeds update -a && ./scripts/feeds install -a
+ patch -p0 < AR9331_S1S3_Openwrt_r38031.patch
+ m25p80.c replace in build_dir directory

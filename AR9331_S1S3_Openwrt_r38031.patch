@@ -1,0 +1,292 @@
+Index: target/linux/ar71xx/files/arch/mips/ath79/mach-tl-wr741nd-v4.c
+===================================================================
+--- target/linux/ar71xx/files/arch/mips/ath79/mach-tl-wr741nd-v4.c	(revision 38031)
++++ target/linux/ar71xx/files/arch/mips/ath79/mach-tl-wr741nd-v4.c	(working copy)
+@@ -27,12 +27,13 @@
+ 
+ #define TL_WR741NDV4_GPIO_LED_WLAN	0
+ #define TL_WR741NDV4_GPIO_LED_QSS	1
+-#define TL_WR741NDV4_GPIO_LED_WAN	13
+-#define TL_WR741NDV4_GPIO_LED_LAN1	14
+-#define TL_WR741NDV4_GPIO_LED_LAN2	15
+-#define TL_WR741NDV4_GPIO_LED_LAN3	16
+-#define TL_WR741NDV4_GPIO_LED_LAN4	17
+-#define TL_WR741NDV4_GPIO_LED_SYSTEM	27
++#define TL_WR741NDV4_GPIO_LED_WAN	17
++#define TL_WR741NDV4_GPIO_LED_WANL	22
++#define TL_WR741NDV4_GPIO_LED_LAN1	13
++#define TL_WR741NDV4_GPIO_LED_LAN2	14
++#define TL_WR741NDV4_GPIO_LED_LAN3	15
++#define TL_WR741NDV4_GPIO_LED_LAN4	16
++#define TL_WR741NDV4_GPIO_LED_SYSTEM	23
+ 
+ #define TL_MR3220V2_GPIO_BTN_WPS	11
+ #define TL_MR3220V2_GPIO_BTN_WIFI	24
+@@ -68,7 +69,7 @@
+ 	}, {
+ 		.name		= "tp-link:green:lan4",
+ 		.gpio		= TL_WR741NDV4_GPIO_LED_LAN4,
+-		.active_low	= 1,
++		.active_low	= 0,
+ 	}, {
+ 		.name		= "tp-link:green:qss",
+ 		.gpio		= TL_WR741NDV4_GPIO_LED_QSS,
+@@ -76,12 +77,16 @@
+ 	}, {
+ 		.name		= "tp-link:green:system",
+ 		.gpio		= TL_WR741NDV4_GPIO_LED_SYSTEM,
+-		.active_low	= 1,
++		.active_low	= 0,
+ 	}, {
+ 		.name		= "tp-link:green:wan",
+ 		.gpio		= TL_WR741NDV4_GPIO_LED_WAN,
+ 		.active_low	= 0,
+ 	}, {
++                  .name           = "tp-link:green:wan_link",
++                  .gpio           = TL_WR741NDV4_GPIO_LED_WANL,
++                  .active_low     = 0,
++          }, {
+ 		.name		= "tp-link:green:wlan",
+ 		.gpio		= TL_WR741NDV4_GPIO_LED_WLAN,
+ 		.active_low	= 0,
+@@ -100,7 +105,7 @@
+ 		.code		= KEY_RESTART,
+ 		.debounce_interval = TL_WR741NDV4_KEYS_DEBOUNCE_INTERVAL,
+ 		.gpio		= TL_WR741NDV4_GPIO_BTN_RESET,
+-		.active_low	= 0,
++		.active_low	= 1,
+ 	}, {
+ 		.desc		= "WPS",
+ 		.type		= EV_KEY,
+@@ -134,7 +139,20 @@
+ 	u8 *mac = (u8 *) KSEG1ADDR(0x1f01fc00);
+ 	u8 *ee = (u8 *) KSEG1ADDR(0x1fff1000);
+ 
+-	ath79_setup_ar933x_phy4_switch(true, true);
++		if((mac[0] == 0xff) &&
++		(mac[1] == 0xff) &&
++		(mac[2] == 0xff) &&
++		(mac[3] == 0xff) &&
++		(mac[4] == 0xff) &&
++		(mac[5] == 0xff))
++	{
++	printk("MAC FF:FF:FF:FF:FF:FF\n");	
++	memcpy(mac, ee+2, 6);
++	mac = ee+2;
++	printk("MAC %02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++	}
++	//ath79_setup_ar933x_phy4_switch(true, true);
++	ath79_setup_ar933x_phy4_switch(false, false);
+ 
+ 	ath79_gpio_function_disable(AR933X_GPIO_FUNC_ETH_SWITCH_LED0_EN |
+ 				    AR933X_GPIO_FUNC_ETH_SWITCH_LED1_EN |
+@@ -156,6 +174,11 @@
+ static void __init tl_wr741ndv4_setup(void)
+ {
+ 	tl_ap121_setup();
++	
++	gpio_request_one(TL_MR3220V2_GPIO_USB_POWER,
++              GPIOF_OUT_INIT_HIGH | GPIOF_EXPORT_DIR_FIXED,
++              "USB power");
++        ath79_register_usb();
+ 
+ 	ath79_register_leds_gpio(-1, ARRAY_SIZE(tl_wr741ndv4_leds_gpio) - 1,
+ 				 tl_wr741ndv4_leds_gpio);
+Index: target/linux/ar71xx/files/drivers/mtd/tplinkpart.c
+===================================================================
+--- target/linux/ar71xx/files/drivers/mtd/tplinkpart.c	(revision 38031)
++++ target/linux/ar71xx/files/drivers/mtd/tplinkpart.c	(working copy)
+@@ -149,7 +149,7 @@
+ 	parts[0].name = "u-boot";
+ 	parts[0].offset = 0;
+ 	parts[0].size = offset;
+-	parts[0].mask_flags = MTD_WRITEABLE;
++	//parts[0].mask_flags = MTD_WRITEABLE;
+ 
+ 	parts[1].name = "kernel";
+ 	parts[1].offset = offset;
+@@ -159,15 +159,24 @@
+ 	parts[2].offset = rootfs_offset;
+ 	parts[2].size = art_offset - rootfs_offset;
+ 
++	parts[4].name = "art";
++	parts[4].offset = art_offset;
++	parts[4].size = TPLINK_ART_LEN;
++	//part4[3].mask_flags = MTD_WRITEABLE;
++
++	parts[3].name = "firmware";
++	parts[3].offset = offset;
++	parts[3].size = art_offset - offset;
++	#if 0
+ 	parts[3].name = "art";
+ 	parts[3].offset = art_offset;
+ 	parts[3].size = TPLINK_ART_LEN;
+-	parts[3].mask_flags = MTD_WRITEABLE;
++	//parts[3].mask_flags = MTD_WRITEABLE;
+ 
+ 	parts[4].name = "firmware";
+ 	parts[4].offset = offset;
+ 	parts[4].size = art_offset - offset;
+-
++	#endif
+ 	vfree(header);
+ 
+ 	*pparts = parts;
+Index: target/linux/ar71xx/image/Makefile
+===================================================================
+--- target/linux/ar71xx/image/Makefile	(revision 38031)
++++ target/linux/ar71xx/image/Makefile	(working copy)
+@@ -921,7 +921,8 @@
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR720NV3,tl-wr720n-v3,TL-WR720N-v3,ttyATH0,115200,0x07200103,1,4Mlzma))
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR740NV4,tl-wr740n-v4,TL-WR741ND-v4,ttyATH0,115200,0x07400004,1,4Mlzma))
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR741NV4,tl-wr741nd-v4,TL-WR741ND-v4,ttyATH0,115200,0x07410004,1,4Mlzma))
+-$(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR743NV2,tl-wr743nd-v2,TL-WR741ND-v4,ttyATH0,115200,0x07430002,1,4Mlzma))
++#$(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR743NV2,tl-wr743nd-v2,TL-WR741ND-v4,ttyATH0,115200,0x07430002,1,4Mlzma))
++$(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR743NV2,tl-wr743nd-v2,TL-WR741ND-v4,ttyATH0,115200,0x07430002,1,8Mlzma))
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR841NV8,tl-wr841n-v8,TL-WR841N-v8,ttyS0,115200,0x08410008,1,4Mlzma))
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR941NV6,tl-wr941nd-v6,TL-WDR3500,ttyS0,115200,0x09410006,1,4Mlzma))
+ $(eval $(call SingleProfile,TPLINK-LZMA,64kraw,TLWR1041,tl-wr1041n-v2,TL-WR1041N-v2,ttyS0,115200,0x10410002,1,4Mlzma))
+Index: target/linux/ar71xx/base-files/etc/uci-defaults/01_leds
+===================================================================
+--- target/linux/ar71xx/base-files/etc/uci-defaults/01_leds	(revision 38031)
++++ target/linux/ar71xx/base-files/etc/uci-defaults/01_leds	(working copy)
+@@ -181,7 +181,8 @@
+ 	;;
+ 
+ tl-wr741nd-v4)
+-	ucidef_set_led_netdev "wan" "WAN" "tp-link:green:wan" "eth1"
++	ucidef_set_led_netdev "wan" "WAN" "tp-link:green:wan" "eth1" "link tx rx"
++	ucidef_set_led_netdev "wanl" "WANL" "tp-link:green:wan_link" "eth1" "link"
+ 	ucidef_set_led_switch "lan1" "LAN1" "tp-link:green:lan1" "switch0" "0x04"
+ 	ucidef_set_led_switch "lan2" "LAN2" "tp-link:green:lan2" "switch0" "0x08"
+ 	ucidef_set_led_switch "lan3" "LAN3" "tp-link:green:lan3" "switch0" "0x10"
+Index: package/network/services/dropbear/files/dropbear.config
+===================================================================
+--- package/network/services/dropbear/files/dropbear.config	(revision 38031)
++++ package/network/services/dropbear/files/dropbear.config	(working copy)
+@@ -2,4 +2,5 @@
+ 	option PasswordAuth 'on'
+ 	option RootPasswordAuth 'on'
+ 	option Port         '22'
++#	option Interface	'lan'
+ #	option BannerFile   '/etc/banner'
+Index: package/base-files/files/lib/functions/uci-defaults.sh
+===================================================================
+--- package/base-files/files/lib/functions/uci-defaults.sh	(revision 38031)
++++ package/base-files/files/lib/functions/uci-defaults.sh	(working copy)
+@@ -8,7 +8,11 @@
+ 	local name=$2
+ 	local sysfs=$3
+ 	local dev=$4
++	local mode="link tx rx"
+ 
++	if [ -n "$5" ]; then
++		mode=$5
++	fi		
+ 	uci -q get system.$cfg && return 0
+ 
+ 	uci batch <<EOF
+@@ -17,7 +21,7 @@
+ set system.$cfg.sysfs='$sysfs'
+ set system.$cfg.trigger='netdev'
+ set system.$cfg.dev='$dev'
+-set system.$cfg.mode='link tx rx'
++set system.$cfg.mode='$mode'
+ EOF
+ 	UCIDEF_LEDS_CHANGED=1
+ }
+Index: package/base-files/files/etc/rc.button/reset
+===================================================================
+--- package/base-files/files/etc/rc.button/reset	(revision 38031)
++++ package/base-files/files/etc/rc.button/reset	(working copy)
+@@ -14,5 +14,5 @@
+ elif [ "$SEEN" -gt 5 ]
+ then
+ 	echo "FACTORY RESET" > /dev/console
+-	jffs2reset -y && reboot &
++	jffs2reset -y && reboot -f &
+ fi
+Index: package/base-files/files/etc/shadow
+===================================================================
+--- package/base-files/files/etc/shadow	(revision 38031)
++++ package/base-files/files/etc/shadow	(working copy)
+@@ -1,4 +1,5 @@
+-root:x:0:0:99999:7:::
++root:$1$2zyJL0u3$UjHfNFlkkj9azThzkLaVA0:16013:0:99999:7:::
++admin:*:16013:0:99999:7:::
+ daemon:*:0:0:99999:7:::
+ ftp:*:0:0:99999:7:::
+ network:*:0:0:99999:7:::
+Index: package/base-files/files/etc/profile
+===================================================================
+--- package/base-files/files/etc/profile	(revision 38031)
++++ package/base-files/files/etc/profile	(working copy)
+@@ -8,6 +8,7 @@
+ 
+ [ -x /bin/more ] || alias more=less
+ [ -x /usr/bin/vim ] && alias vi=vim || alias vim=vi
++[ -x /bin/ls ] && alias ll=ls -l
+ 
+ [ -z "$KSH_VERSION" -o \! -s /etc/mkshrc ] || . /etc/mkshrc
+ 
+Index: package/base-files/files/etc/config/system
+===================================================================
+--- package/base-files/files/etc/config/system	(revision 38031)
++++ package/base-files/files/etc/config/system	(working copy)
+@@ -1,6 +1,8 @@
+ config system
+-	option hostname	OpenWrt
+-	option timezone	UTC
++	option hostname	antMiner
++	#option timezone	UTC
++	option zonename 'Asia/Shanghai'
++        option timezone 'CST-8'
+ 
+ config timeserver ntp
+ 	list server	0.openwrt.pool.ntp.org
+Index: tools/firmware-utils/src/mktplinkfw.c
+===================================================================
+--- tools/firmware-utils/src/mktplinkfw.c	(revision 38031)
++++ tools/firmware-utils/src/mktplinkfw.c	(working copy)
+@@ -269,10 +269,16 @@
+ 		.hw_rev		= 1,
+ 		.layout_id	= "4M",
+ 	}, {
++	/*}, {
+ 		.id		= "TL-WR741NDv4",
+ 		.hw_id		= HWID_TL_WR741ND_V4,
+ 		.hw_rev		= 1,
+ 		.layout_id	= "4Mlzma",
++	}, {*/
++		.id		= "TL-WR741NDv4",
++		.hw_id		= HWID_TL_WR741ND_V4,
++		.hw_rev		= 1,
++		.layout_id	= "4Mlzma",
+ 	}, {
+ 		.id		= "TL-WR740Nv1",
+ 		.hw_id		= HWID_TL_WR740N_V1,
+@@ -283,16 +289,22 @@
+ 		.hw_id		= HWID_TL_WR740N_V3,
+ 		.hw_rev		= 1,
+ 		.layout_id	= "4M",
+-	}, {
++	/*},{
+ 		.id		= "TL-WR743NDv1",
+ 		.hw_id		= HWID_TL_WR743ND_V1,
+ 		.hw_rev		= 1,
+ 		.layout_id	= "4M",
++	}, {*/
+ 	}, {
++		.id		= "TL-WR743NDv1",
++		.hw_id		= HWID_TL_WR743ND_V2,
++		.hw_rev		= 1,
++		.layout_id	= "8M",
++	}, {
+ 		.id		= "TL-WR743NDv2",
+ 		.hw_id		= HWID_TL_WR743ND_V2,
+ 		.hw_rev		= 1,
+-		.layout_id	= "4Mlzma",
++		.layout_id	= "8Mlzma",
+ 	}, {
+ 		.id		= "TL-WR841Nv1.5",
+ 		.hw_id		= HWID_TL_WR841N_V1_5,
